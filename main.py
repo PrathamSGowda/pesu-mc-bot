@@ -11,6 +11,7 @@ load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 CRAFTY_TOKEN = os.getenv('CRAFTY_TOKEN')
 SERVER_IP = os.getenv('SERVER_IP')
+SERVER_ID = os.getenv('SERVER_ID')
 ADMIN_ID = [int(rid.strip()) for rid in os.getenv("ADMIN_ID").split(",")]
 intents = discord.Intents.default()
 intents.message_content = True
@@ -27,6 +28,10 @@ async def on_ready():
 @bot.command()
 async def ping(ctx):
     await ctx.reply("pong")
+
+@bot.command()
+async def josh(ctx):
+    await ctx.reply("is dumass")
 
 def is_admin(ctx):
     return any(role.id in ADMIN_ID for role in ctx.author.roles)
@@ -70,12 +75,12 @@ async def check_server():
         print(f'Error checking server status: {e}')
 
 async def shutdown_server(manual=False):
-    headers = {"Authorization": f"Bearer {CRAFTY_TOKEN}","Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {token}","Content-Type": "application/json"}
     channel = discord.utils.get(bot.get_all_channels(), name='dev-chat')
     if channel:
         if manual:
             await channel.send('Server stop command received from admin. Stopping Minecraft server...')
-            requests.post("https://pesu-mc.ddns.net:8443/api/v2/servers/1/action/stop_server", headers=headers, verify=False)
+            await mc_server = requests.post("https://pesu-mc.ddns.net:8443/api/v2/servers/1/action/stop_server", headers=headers, verify=False)
         else:
             await channel.send('Server has been empty for 5 minutes. Initiating automatic shutdown sequence.')
     print('Shutting down server...')
