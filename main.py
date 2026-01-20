@@ -8,22 +8,15 @@ from datetime import datetime
 from utils import is_admin, get_player_count, start_vm, stop_vm, stop_mc_server, get_vm_status
 from webserver import run_webserver
 
-import socket
-import aiohttp
-
 import threading
 
 load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 
-connector = aiohttp.TCPConnector(
-    family=socket.AF_INET
-)
-
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix='$', intents=intents, connector=connector)
+bot = commands.Bot(command_prefix='$', intents=intents)
 empty_time = None
 trigger_shutdown = False
 
