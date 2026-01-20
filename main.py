@@ -15,6 +15,7 @@ from utils import (
     format_duration,
     STATS_DB_PATH,
     POLL_INTERVAL,
+    SERVER_IP,
 )
 from webserver import run_webserver
 from stats.db import init_db
@@ -27,7 +28,7 @@ import threading
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-MC_STATS_URL = os.getenv("MC_STATS_URL")
+MC_STATS_URL = f"{SERVER_IP}/mc/stats"
 MC_STATS_TOKEN = os.getenv("MC_STATS_TOKEN")
 
 intents = discord.Intents.default()
