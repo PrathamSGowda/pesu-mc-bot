@@ -63,7 +63,7 @@ def embed_auto_shutdown():
     return discord.Embed(
         title=f"{SAD} Server Idle",
         description=(
-            "The server has been empty for **1 hour**.\n"
+            "The server has been empty for **1 minute**.\n"
             "Initiating automatic shutdown sequence…"
         ),
         color=discord.Color.gold(),
