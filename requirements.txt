@@ -5,3 +5,5 @@ google-cloud-compute
 google-auth
 flask
 pyyaml
+matplotlib
+mongo
