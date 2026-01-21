@@ -1,54 +1,111 @@
+from stats.mongo import server_metrics
+from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
-import sqlite3
-from datetime import datetime
 import time
+import math
+
+PUSH_INTERVAL_SECONDS = 10
+GAP_THRESHOLD = timedelta(seconds=PUSH_INTERVAL_SECONDS * 2)
+
+DARK_BG = "#0f1117"
+AX_BG = "#161b22"
+GRID_COLOR = "#30363d"
+LINE_COLOR = "#58a6ff"
+FILL_COLOR = "#58a6ff"
 
 
-def plot_metric(db_conn, metric, minutes=60, ylabel="", multiply=1.0):
+def plot_metric(metric, minutes=60, ylabel="", multiply=1.0):
     """
-    Produce a graph for the requested metric and time.
+    Produce a dark-themed graph with gap detection and area shading.
 
-    Args:
-        metric: Column name in metrics table.
-        minutes: How far back to plot.
-        multiply: Scale factor (e.g. cpu_load * 100).
-
-    Returns:
-        str: File path of the saved image. (MUST BE DELETED AFTER SENDING TO USER)
+    - Breaks line when server is offline
+    - Shades area under curve
+    - Optimized for Discord embeds
     """
+    since = datetime.utcnow() - timedelta(minutes=minutes)
 
-    cur = db_conn.cursor()
-    since = int((time.time() - minutes * 60) * 1000)
-    cur.execute(
-        f"""
-        SELECT timestamp, {metric}
-        FROM metrics
-        WHERE timestamp >= ?
-        AND online = 1
-        ORDER BY timestamp
-        """,
-        (since,),
-    )
+    cursor = server_metrics.find(
+        {"timestamp": {"$gte": since}},
+        {"timestamp": 1, metric: 1},
+    ).sort("timestamp", 1)
 
-    rows = cur.fetchall()
-    if not rows:
+    times = []
+    values = []
+
+    last_ts = None
+
+    for doc in cursor:
+        if metric not in doc:
+            continue
+
+        ts = doc["timestamp"]
+        val = doc[metric] * multiply
+        if last_ts is not None and (ts - last_ts) > GAP_THRESHOLD:
+            times.append(ts)
+            values.append(float("nan"))
+
+        times.append(ts)
+        values.append(val)
+        last_ts = ts
+
+    if not times:
         return None
 
-    times = [datetime.fromtimestamp(ts / 1000) for ts, _ in rows]
-    values = [v * multiply for _, v in rows]
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    fig.patch.set_facecolor(DARK_BG)
+    ax.set_facecolor(AX_BG)
 
-    plt.figure(figsize=(8, 4))
-    plt.plot(times, values)
-    plt.xlabel("Time")
-    plt.ylabel(ylabel or metric)
-    plt.title(
-        f"{metric.replace('_', ' ').title()} "
-        f"(last {minutes} min, {len(values)} points)"
+    ax.plot(
+        times,
+        values,
+        color=LINE_COLOR,
+        linewidth=2.2,
+        solid_capstyle="round",
     )
+
+    ax.fill_between(
+        times,
+        values,
+        0,
+        color=FILL_COLOR,
+        alpha=0.25,
+        interpolate=False,
+    )
+
+    ax.grid(
+        True,
+        which="major",
+        linestyle="--",
+        linewidth=0.6,
+        color=GRID_COLOR,
+        alpha=0.6,
+    )
+
+    ax.set_xlabel("Time", color="white", labelpad=8)
+    ax.set_ylabel(ylabel or metric, color="white", labelpad=8)
+
+    ax.tick_params(colors="white", labelsize=9)
+
+    for spine in ax.spines.values():
+        spine.set_color(GRID_COLOR)
+
+    ax.set_title(
+        f"{metric.replace('_', ' ').title()} — last {minutes} min",
+        color="white",
+        fontsize=12,
+        pad=12,
+        loc="left",
+    )
+
     plt.tight_layout()
 
-    filename = f"/tmp/{metric}_{int(datetime.utcnow().timestamp())}.png"
-    plt.savefig(filename)
-    plt.close()
+    path = f"/tmp/{metric}_{int(time.time())}.png"
+    plt.savefig(
+        path,
+        dpi=140,
+        facecolor=fig.get_facecolor(),
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
-    return filename
+    return path

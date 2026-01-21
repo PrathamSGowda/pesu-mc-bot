@@ -27,10 +27,6 @@ INSTANCE_NAME = config["gcp"]["INSTANCE_NAME"]
 GOOGLE_SERVICE_ACCOUNT_BASE64 = os.getenv("GOOGLE_SERVICE_ACCOUNT_BASE64")
 CRAFTY_TOKEN = os.getenv("CRAFTY_TOKEN")
 
-# stats
-POLL_INTERVAL = config["stats"]["POLL_INTERVAL"]
-STATS_DB_PATH = config["stats"]["DB_PATH"]
-
 
 key_json = json.loads(base64.b64decode(GOOGLE_SERVICE_ACCOUNT_BASE64))
 credentials = service_account.Credentials.from_service_account_info(key_json)

@@ -13,23 +13,16 @@ from utils import (
     stop_mc_server,
     get_vm_status,
     format_duration,
-    STATS_DB_PATH,
-    POLL_INTERVAL,
-    SERVER_IP,
 )
 from webserver import run_webserver
-from stats.db import init_db
-from stats.poller import poll_stats
 from stats.graphs import plot_metric
-from stats.player_store import upsert_player, get_player_by_name
+from stats.mongo import server_metrics, players
+from datetime import datetime, timezone
 
 import threading
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-MC_STATS_URL = f"{SERVER_IP}/mc/stats"
-MC_STATS_TOKEN = os.getenv("MC_STATS_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -37,8 +30,6 @@ bot = commands.Bot(command_prefix="$", intents=intents)
 empty_time = None
 trigger_shutdown = False
 
-# stats db conn
-db_conn = init_db(STATS_DB_PATH)
 VOTE_EMOJI = "👍"
 REQUIRED_VOTES = 4
 
@@ -52,6 +43,8 @@ CHEST = "<a:MinecraftChestOpening:1462837623625355430>"
 TNT = "<a:TNT:1462841582376980586>"
 FLAME = "<a:animated_flame:1462846702191907013>"
 SAD = "<:jeb_screm:1462848647149519145>"
+RED_DOT = "🔴"
+GREEN_DOT = "🟢"
 
 
 def embed_starting():
@@ -173,6 +166,7 @@ def embed_no_permission():
         timestamp=datetime.now(timezone.utc),
     ).set_footer(text="Xymic")
 
+
 def embed_vote_start():
     return discord.Embed(
         title="🗳️ Vote to Start Server",
@@ -181,7 +175,7 @@ def embed_vote_start():
             f"Votes needed: **{REQUIRED_VOTES+1}**"
         ),
         color=discord.Color.blurple(),
-        timestamp=datetime.now(timezone.utc)
+        timestamp=datetime.now(timezone.utc),
     ).set_footer(text="Xymic")
 
 
@@ -204,11 +198,11 @@ def embed_vm_stop():
 async def on_ready():
     """
     STACK: Discord Bot
-    Login acknowledgement and start timers for `check_server` and `poll_mc_stats`
+    Login acknowledgement and start timers for `check_server`
     """
     print(f"Logged in as {bot.user}")
     check_server.start()
-    poll_mc_stats.start()
+
 
 @bot.event
 async def on_reaction_add(reaction, user):
@@ -241,13 +235,19 @@ async def on_reaction_add(reaction, user):
 
 @bot.command()
 async def start(ctx):
+    """
+    STACK: Server control
+    Starts the minecraft server if the user is admin, if not,
+    make a poll to get 4+ votes in order to start the server.
+
+    """
     global active_vote_message_id, current_votes
     if is_admin(ctx):
         await ctx.reply(embed=embed_starting())
         await start_vm()
         await ctx.reply(embed=embed_started())
         return
-    
+
     else:
         current_votes = set()
         vote_message = await ctx.reply(embed=embed_vote_start())
@@ -268,7 +268,7 @@ async def stop(ctx):
     await shutdown_server(manual=True)
 
 
-@tasks.loop(seconds=POLL_INTERVAL)
+@tasks.loop(seconds=10)
 async def check_server():
     """
     STACK: Server control
@@ -296,16 +296,6 @@ async def check_server():
             trigger_shutdown = False
     else:
         print("Server is off")
-
-
-@tasks.loop(seconds=POLL_INTERVAL)
-async def poll_mc_stats():
-    """
-    STACK: Stats
-    Poll to push instantaneous server stats to SQLite DB.
-    """
-
-    await poll_stats(db_conn, MC_STATS_URL, MC_STATS_TOKEN)
 
 
 @bot.command()
@@ -375,7 +365,6 @@ async def graph(ctx, metric=None, minutes=60):
     col, label, scale = metric_map[metric]
 
     path = plot_metric(
-        db_conn,
         col,
         minutes=minutes,
         ylabel=label,
@@ -398,174 +387,107 @@ async def graph(ctx, metric=None, minutes=60):
 async def stats_server(ctx):
     """
     STACK: Stats
-    Fetches the server statistics from SQLite DB. Constructs discord embed and
+    Fetches the server statistics from MongoDB. Constructs discord embed and
     returns to message as reply.
 
     Args:
         ctx: Message object
     """
-    cur = db_conn.cursor()
+    doc = server_metrics.find_one(sort=[("timestamp", -1)])
 
-    # check if server is offline
-    cur.execute("SELECT online, timestamp FROM metrics ORDER BY timestamp DESC LIMIT 1")
-    latest = cur.fetchone()
-
-    if not latest:
-        await ctx.reply("No server data available yet.")
+    if not doc:
+        embed = discord.Embed(
+            title=f"{RED_DOT} Minecraft Server Stats",
+            description="No data available.",
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        await ctx.reply(embed=embed)
         return
 
-    if latest[0] == 0:
-        await ctx.reply("⚠️ Server is currently **offline**.")
-        return
-
-    cur.execute(
-        """
-        SELECT
-            player_count,
-            cpu_load,
-            ram_used_mb,
-            ram_max_mb,
-            threads,
-            loaded_chunks,
-            total_joins,
-            total_deaths,
-            uptime_ms,
-            total_runtime_ms,
-            total_runtime_hms
-        FROM metrics
-        WHERE online = 1
-        ORDER BY timestamp DESC
-        LIMIT 1
-    """  # sql query
-    )
-    row = cur.fetchone()
-
-    if not row:
-        await ctx.reply("No server data available.")
-        return
+    status = await get_vm_status()
+    # status = "RUNNING"
+    offline = status != "RUNNING"
 
     embed = discord.Embed(
         title="Minecraft Server Stats",
-        color=discord.Color.green(),
+        color=discord.Color.red() if offline else discord.Color.green(),
         timestamp=datetime.now(timezone.utc),
     )
 
-    embed.add_field(name="Players Online", value=row[0], inline=True)
-    embed.add_field(name="CPU Load", value=f"{row[1] * 100:.2f}%", inline=True)
-    embed.add_field(name="RAM Used", value=f"{row[2]} / {row[3]} MB", inline=True)
-    embed.add_field(name="Threads", value=row[4], inline=True)
-    embed.add_field(name="Loaded Chunks", value=row[5], inline=True)
-    embed.add_field(name="Total Joins", value=row[6], inline=True)
-    embed.add_field(name="Total Deaths", value=row[7], inline=True)
-    embed.add_field(name="Uptime (current)", value=format_duration(row[8]), inline=True)
+    if offline:
+        embed.description = (
+            f"{RED_DOT} Server is currently **offline**.\nShowing last known data."
+        )
+    else:
+        embed.description = (
+            f"{GREEN_DOT} Server is currently **online**.\nShowing live data."
+        )
+
+    embed.add_field(name="Players Online", value=doc.get("player_count", 0))
     embed.add_field(
-        name="Total Runtime", value=row[10], inline=False
-    )  # 9 is runtime in ms, 10 is h/s
+        name="CPU Load",
+        value=f"{doc.get('cpu_load', 0) * 100:.2f}%",
+    )
+    embed.add_field(
+        name="RAM",
+        value=f"{doc.get('ram_used_mb', 0)} / {doc.get('ram_max_mb', 0)} MB",
+    )
+    embed.add_field(name="Threads", value=doc.get("threads", 0))
+    embed.add_field(name="Loaded Chunks", value=doc.get("loaded_chunks", 0))
+    embed.add_field(name="Total Joins", value=doc.get("total_joins", 0))
+    embed.add_field(name="Total Deaths", value=doc.get("total_deaths", 0))
+    embed.add_field(
+        name="Uptime",
+        value=format_duration(doc.get("uptime_ms", 0)),
+        inline=False,
+    )
+    embed.add_field(
+        name="Total Runtime",
+        value=format_duration(doc.get("total_runtime_ms", 0)),
+        inline=False,
+    )
+
     await ctx.reply(embed=embed)
 
 
 async def stats_player(ctx, username):
     """
     STACK: Stats
-    Fetches induvidual player statistics based on username. Constructs
-    a discord embed and replies to message object. If the server is
-    online, a live fetch is attempted, else a DB fetch is attempted.
+    Fetches induvidual player statistics based on username from the DB.
 
     Args:
         ctx: Message object
         username: Username of the player in the server.
     """
-    import aiohttp
+    doc = players.find_one({"name": {"$regex": f"^{username}$", "$options": "i"}})
 
-    data = None
-    server_online = True
-
-    # try live fetch
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{MC_STATS_URL}?name={username}",
-                headers={"X-Stats-Token": MC_STATS_TOKEN},
-                timeout=2,
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    upsert_player(db_conn, data)
-                else:
-                    server_online = False
-    except Exception:
-        server_online = False
-    if data:
-        upsert_player(db_conn, data)
-
-    # if server offline, fallback to DB
-    if not data:
-        row = get_player_by_name(db_conn, username)
-        if not row:
-            await ctx.reply("No stored data found for this player.")
-            return
-
-        (
-            uuid,
-            name,
-            total_joins,
-            total_deaths,
-            total_playtime_ms,
-            player_kills,
-            mob_kills,
-            messages_sent,
-            advancement_count,
-            first_join_ts,
-            last_join_ts,
-            last_seen_ts,
-            last_updated_ts,
-        ) = row
-
-        data = {
-            "uuid": uuid,
-            "name": name,
-            "total_joins": total_joins,
-            "total_deaths": total_deaths,
-            "total_playtime_ms": total_playtime_ms,
-            "player_kills": player_kills,
-            "mob_kills": mob_kills,
-            "messages_sent": messages_sent,
-            "advancement_count": advancement_count,
-            "first_join_ts": first_join_ts,
-            "last_join_ts": last_join_ts,
-            "last_seen_ts": last_seen_ts,
-            "online": False,
-        }
-
-        await ctx.reply("⚠️ Server is offline. Showing last known data.")
+    if not doc:
+        await ctx.reply("Player not found.")
+        return
 
     embed = discord.Embed(
-        title=f"Player Stats – {data['name']}",
-        color=discord.Color.blue(),
+        title=f"Player Stats – {doc['name']}",
+        color=discord.Color.green() if doc.get("online") else discord.Color.red(),
         timestamp=datetime.now(timezone.utc),
     )
 
     embed.add_field(
-        name="Playtime",
-        value=format_duration(data["total_playtime_ms"]),
-        inline=True,
-    )
-    embed.add_field(name="Total Joins", value=data["total_joins"], inline=True)
-    embed.add_field(name="Deaths", value=data["total_deaths"], inline=True)
-    embed.add_field(name="Player Kills", value=data["player_kills"], inline=True)
-    embed.add_field(name="Mob Kills", value=data["mob_kills"], inline=True)
-    embed.add_field(name="Messages Sent", value=data["messages_sent"], inline=True)
-    embed.add_field(name="Advancements", value=data["advancement_count"], inline=True)
-    embed.add_field(
-        name="First Join",
-        value=f"<t:{data['first_join_ts'] // 1000}:R>",
+        name="Status",
+        value=f"{GREEN_DOT} Online" if doc.get("online") else f"{RED_DOT} Offline",
         inline=True,
     )
     embed.add_field(
-        name="Last Seen",
-        value=f"<t:{data['last_seen_ts'] // 1000}:R>",
-        inline=True,
+        name="Playtime", value=format_duration(doc["total_playtime_ms"]), inline=True
     )
+    embed.add_field(name="Total Joins", value=doc["total_joins"])
+    embed.add_field(name="Deaths", value=doc["total_deaths"])
+    embed.add_field(name="Player Kills", value=doc["player_kills"])
+    embed.add_field(name="Mob Kills", value=doc["mob_kills"])
+    embed.add_field(name="Messages", value=doc["messages_sent"])
+    embed.add_field(name="Advancements", value=doc["advancement_count"])
+    embed.add_field(name="First Join", value=f"<t:{doc['first_join_ts']//1000}:R>")
+    embed.add_field(name="Last Seen", value=f"<t:{doc['last_seen_ts']//1000}:R>")
 
     await ctx.reply(embed=embed)
 
