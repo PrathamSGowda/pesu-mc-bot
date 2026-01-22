@@ -482,7 +482,7 @@ async def stats_player(ctx, username):
     )
     embed.add_field(name="Total Joins", value=doc["total_joins"])
     embed.add_field(name="Deaths", value=doc["total_deaths"])
-    embed.add_field(name="Player Kills", value=doc["player_kills"])
+    # embed.add_field(name="Player Kills", value=doc["player_kills"])
     embed.add_field(name="Mob Kills", value=doc["mob_kills"])
     embed.add_field(name="Messages", value=doc["messages_sent"])
     embed.add_field(name="Advancements", value=doc["advancement_count"])
