@@ -307,8 +307,8 @@ async def check_server():
     else:
         print("[SERVER CONTROL] Server is off")
 
-@bot.command()
-async def list(ctx):
+@bot.command(name="players", aliases=["list", "online"])
+async def list_players(ctx):
     """
     STACK: Players
     Lists all currently online players.
