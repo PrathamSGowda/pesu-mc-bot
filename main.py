@@ -307,6 +307,53 @@ async def check_server():
     else:
         print("[SERVER CONTROL] Server is off")
 
+@bot.command()
+async def list(ctx):
+    """
+    STACK: Players
+    Lists all currently online players.
+    """
+
+    status = await get_vm_status()
+    if status != "RUNNING":
+        embed = discord.Embed(
+            title="🔴 Server Offline",
+            description="The server is currently offline.",
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        await ctx.reply(embed=embed)
+        return
+
+    await ping_stats()
+
+    online_players = list(players.find({"online": True}))
+
+    if not online_players:
+        embed = discord.Embed(
+            title="🟡 No Players Online",
+            description="There are currently no players on the server.",
+            color=discord.Color.gold(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        await ctx.reply(embed=embed)
+        return
+
+    names = [doc.get("name", "Unknown") for doc in online_players]
+
+    embed = discord.Embed(
+        title="🟢 Players Online",
+        description=f"**{len(names)} player(s) currently online**\n\n" + "\n".join(
+            f"• `{name}`" for name in names
+        ),
+        color=discord.Color.green(),
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    embed.set_footer(text="Live player list")
+
+    await ctx.reply(embed=embed)
+
 
 @bot.command()
 async def stats(ctx, mode=None, player=None):
