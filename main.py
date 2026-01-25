@@ -16,13 +16,20 @@ from utils import (
     gb,
     ping_stats,
 )
+<<<<<<< HEAD
 from webserver import run_webserver
+=======
+
+>>>>>>> 3716ca6 (uv migration and multi-threading support)
 from stats.graphs import plot_metric
 from stats.mongo import server_metrics, players, duels_db
 from datetime import datetime, timezone
 
+<<<<<<< HEAD
 import threading
 
+=======
+>>>>>>> 3716ca6 (uv migration and multi-threading support)
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
@@ -764,7 +771,10 @@ async def shutdown_server(manual=False):
         await stop_vm()
         await channel.send(embed=embed_vm_stop())
 
+<<<<<<< HEAD
 
 threading.Thread(target=run_webserver, daemon=True).start()
 
+=======
+>>>>>>> 3716ca6 (uv migration and multi-threading support)
 bot.run(BOT_TOKEN)
