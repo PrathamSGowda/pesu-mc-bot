@@ -16,12 +16,10 @@ from utils import (
     gb,
     ping_stats,
 )
-from webserver import run_webserver
+
 from stats.graphs import plot_metric
 from stats.mongo import server_metrics, players, duels_db
 from datetime import datetime, timezone
-
-import threading
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -763,8 +761,5 @@ async def shutdown_server(manual=False):
         await channel.send(embed=embed_stopped())
         await stop_vm()
         await channel.send(embed=embed_vm_stop())
-
-
-threading.Thread(target=run_webserver, daemon=True).start()
 
 bot.run(BOT_TOKEN)

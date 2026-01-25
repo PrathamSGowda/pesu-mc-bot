@@ -1,5 +1,9 @@
 from pymongo import MongoClient
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB = os.getenv("MONGO_DB")
@@ -10,3 +14,4 @@ db = client[MONGO_DB]
 server_metrics = db.server_metrics
 players = db.players
 duels_db = db.duels
+
