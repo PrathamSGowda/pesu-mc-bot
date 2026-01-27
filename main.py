@@ -781,7 +781,7 @@ async def help_cmd(interaction: discord.Interaction, target: str = None):
 
             embed.set_footer(text="Detailed command help")
 
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=False)
             return
 
         matched_stack = None
@@ -805,7 +805,7 @@ async def help_cmd(interaction: discord.Interaction, target: str = None):
 
             embed.set_footer(text=f"Category: {matched_stack}")
 
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=False)
             return
 
         await interaction.response.send_message(
